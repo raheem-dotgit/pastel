@@ -27,7 +27,7 @@ jobs:
       - name: Rename binary
         run: cp target/release/pastel pastel-${{ matrix.arch }}
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: pastel-${{ matrix.arch }}
           generate_release_notes: true
