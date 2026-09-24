@@ -10,6 +10,13 @@ you've copied, search it, pin favorites, and paste again. It's a native
 GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 **Wayland**.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img src="docs/screenshot-light.png" width="430" alt="Pastel clipboard manager window showing searchable clipboard history with pinned clips on Ubuntu GNOME">
+  </picture>
+</p>
+
 ## Features
 
 - **Clipboard history on Super+V**, just like Win+V on Windows
