@@ -2,6 +2,9 @@
 
 use crate::paths::{history_path, settings_path};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ClipItem {
@@ -54,7 +57,7 @@ impl Settings {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct HistoryFile {
     pub items: Vec<ClipItem>,
 }
@@ -67,17 +70,50 @@ pub fn load_history() -> Vec<ClipItem> {
         .unwrap_or_default()
 }
 
+/// Write a file readable only by the user, via a temp file and rename so a
+/// crash mid-write never leaves a truncated history behind.
+fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    std::fs::rename(&tmp, path)
+}
+
 pub fn save_history(items: &[ClipItem]) {
-    let hist = HistoryFile {
-        items: items.to_vec(),
-    };
-    if let Ok(json) = serde_json::to_string_pretty(&hist) {
-        let _ = std::fs::write(history_path(), json);
+    #[derive(Serialize)]
+    struct HistoryRef<'a> {
+        items: &'a [ClipItem],
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&HistoryRef { items }) {
+        let _ = write_private(&history_path(), &json);
     }
 }
 
 pub fn save_settings(settings: &Settings) {
     if let Ok(json) = serde_json::to_string_pretty(settings) {
-        let _ = std::fs::write(settings_path(), json);
+        let _ = write_private(&settings_path(), &json);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn write_private_is_user_only_and_complete() {
+        let path = std::env::temp_dir().join(format!("pastel-test-{}.json", std::process::id()));
+        write_private(&path, "{\"a\":1}").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert!(!path.with_extension("json.tmp").exists());
+        std::fs::remove_file(path).unwrap();
     }
 }
