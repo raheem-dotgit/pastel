@@ -1,7 +1,7 @@
 //! Pastel: a Win+V style clipboard history manager for Linux.
 //!
-//! Entry point: handles the `show`, `quit` and `install` commands, makes sure
-//! only one instance runs, then starts the GTK app.
+//! Entry point: handles the `show`, `quit`, `install` and `update` commands,
+//! makes sure only one instance runs, then starts the GTK app.
 
 mod backend;
 mod format;
@@ -15,6 +15,7 @@ use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+const INSTALL_URL: &str = "https://raw.githubusercontent.com/raheem-dotgit/pastel/main/install.sh";
 const MEDIA_KEYS: &str = "org.gnome.settings-daemon.plugins.media-keys";
 const SHORTCUT_PATH: &str =
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/pastel/";
@@ -122,6 +123,20 @@ fn cmd_install() {
     }
 }
 
+/// Update to the latest release by re-running the install script.
+fn cmd_update() {
+    // Download the script fully first, so a failed download runs nothing.
+    let script = format!("set -e; s=$(curl -fsSL {INSTALL_URL}); printf '%s\\n' \"$s\" | sh");
+    let ok = Command::new("sh")
+        .args(["-c", &script])
+        .status()
+        .is_ok_and(|s| s.success());
+    if !ok {
+        eprintln!("Update failed. Check your internet connection and that curl is installed.");
+        std::process::exit(1);
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -131,6 +146,7 @@ fn main() {
             return;
         }
         Some("install") => return cmd_install(),
+        Some("update") => return cmd_update(),
         _ => {}
     }
 

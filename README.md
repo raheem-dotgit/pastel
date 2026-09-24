@@ -39,8 +39,8 @@ curl -fsSL https://raw.githubusercontent.com/raheem-dotgit/pastel/main/install.s
 ```
 
 This downloads the latest release to `~/.local/bin/pastel`, adds Pastel to
-your app menu, **binds Super+V automatically** on GNOME, and starts it. Run
-the same command again to update.
+your app menu, **binds Super+V automatically** on GNOME, and starts it.
+To update later, run `pastel update`.
 
 Requirements: Ubuntu 24.04 or newer (or another distro with GTK 4 and
 libadwaita), plus `wl-clipboard`:
@@ -61,6 +61,7 @@ make it executable, and run `./pastel install`.
 | `pastel show` | Open the window (starts Pastel if needed) |
 | `pastel quit` | Quit the running instance |
 | `pastel install` | Add to the app menu and bind Super+V |
+| `pastel update` | Update to the latest release |
 
 | Key | Action |
 |---|---|
