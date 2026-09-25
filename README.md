@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/raheem-dotgit/pastel)](https://github.com/raheem-dotgit/pastel/releases/latest)
 [![CI](https://github.com/raheem-dotgit/pastel/actions/workflows/ci.yml/badge.svg)](https://github.com/raheem-dotgit/pastel/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/rahym)
 
 **Pastel** is a fast, lightweight clipboard manager for Linux that works like
 **Windows clipboard history (Win+V)**. Press **Super+V** to see everything
@@ -121,6 +122,9 @@ Then remove the Pastel shortcut in **Settings → Keyboard → Custom Shortcuts*
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+If Pastel saves you time, you can support its development on
+[Buy Me a Coffee](https://buymeacoffee.com/rahym).
 
 ## License
 
