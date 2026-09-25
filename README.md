@@ -30,6 +30,20 @@ GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 - **Local and private**: history is stored only on your computer
 - Small (~600 KB) and fast, written in Rust
 
+## How Pastel compares
+
+| | Pastel | [CopyQ](https://github.com/hluk/CopyQ) | [GPaste](https://github.com/Keruspe/GPaste) | [Clipman](https://github.com/chmouel/clipman) |
+|---|---|---|---|---|
+| Interface | GTK4 + libadwaita | Qt | GTK 4 app + GNOME Shell extension | none; uses a picker such as wofi |
+| Default shortcut to open history | Super+V | configurable | Ctrl+Alt+H | bind it yourself |
+| Desktops | GNOME, wlroots (Sway, Hyprland) | Linux, Windows, macOS¹ | GNOME | wlroots (Sway etc.) |
+| Records copies while hidden on GNOME | ❌ latest copy only² | ✅ via its Shell extension | ✅ | n/a |
+
+¹ On Wayland, CopyQ monitors the clipboard natively on KDE Plasma and
+wlroots, and through a bundled GNOME Shell extension on GNOME
+([known issues](https://copyq.readthedocs.io/en/latest/known-issues.html)).
+² See [How clipboard capture works](#how-clipboard-capture-works).
+
 ## Install
 
 One command, no cloning or compiling:
@@ -117,6 +131,31 @@ gsettings reset org.gnome.shell.keybindings toggle-message-tray
 ```
 
 Then remove the Pastel shortcut in **Settings → Keyboard → Custom Shortcuts**.
+
+## FAQ
+
+**How do I get Windows-style clipboard history (Win+V) on Ubuntu?**
+Install Pastel with the one-line command above and press Super+V. You get a
+searchable list of what you've copied, like Win+V on Windows.
+
+**Does it work on Wayland?**
+Yes. On Sway, Hyprland and other wlroots compositors every copy is recorded.
+On GNOME, Wayland only lets Pastel see copies while its window is open, plus
+your latest copy each time you open it.
+
+**Is there a clipboard manager for GNOME that looks native?**
+Pastel is built with GTK4 and libadwaita, so it looks like other GNOME apps
+and follows your light/dark system theme.
+
+**Where is my clipboard history stored?**
+Locally, in `~/.config/pastel/history.json`, readable only by your user.
+Your history never leaves your computer.
+
+**Does it save images?**
+No, Pastel records text only.
+
+**Is it free?**
+Yes. Pastel is free and open source under the MIT license.
 
 ## Contributing
 
