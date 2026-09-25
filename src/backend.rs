@@ -1,7 +1,9 @@
 //! Clipboard backend: `wl-paste --watch` capture and `wl-copy` for text and images.
 
+use gtk4::gio;
+use gtk4::prelude::*;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
@@ -10,7 +12,8 @@ use std::thread;
 pub enum WatchEvent {
     Clip(String),
     /// Raw image bytes in whatever format the source offered (PNG, JPEG, ...).
-    Image(Vec<u8>),
+    /// The optional name is the source file name, when the copy was a file.
+    Image(Vec<u8>, Option<String>),
     Dead,
 }
 
@@ -36,11 +39,45 @@ pub fn image_type<S: AsRef<str>>(types: &[S]) -> Option<&str> {
     Some(types[pick])
 }
 
+/// When the copied text is a single image file (a path, or a `file://` or
+/// `recent://` link as the Files app copies it), return the file's path.
+pub fn image_file(text: &str) -> Option<PathBuf> {
+    let s = text.trim();
+    if s.is_empty() || s.contains('\n') {
+        return None;
+    }
+    let file = if s.starts_with('/') {
+        gio::File::for_path(s)
+    } else if s.starts_with("file://") || s.starts_with("recent://") {
+        gio::File::for_uri(s)
+    } else {
+        return None;
+    };
+    let info = file
+        .query_info(
+            "standard::content-type,standard::target-uri",
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .ok()?;
+    if !info.content_type()?.starts_with("image/") {
+        return None;
+    }
+    match info.attribute_string("standard::target-uri") {
+        Some(target) => gio::File::for_uri(&target).path(),
+        None => file.path(),
+    }
+}
+
 /// True when a password manager (KeePassXC etc.) marked the clip as secret.
 pub fn is_secret<S: AsRef<str>>(types: &[S]) -> bool {
     types
         .iter()
         .any(|t| t.as_ref().contains("passwordManagerHint"))
+}
+
+pub fn file_name(path: &Path) -> Option<String> {
+    Some(path.file_name()?.to_string_lossy().into_owned())
 }
 
 fn wl_paste(args: &[&str]) -> Option<Vec<u8>> {
@@ -57,12 +94,16 @@ fn read_current() -> Option<WatchEvent> {
     }
     if has_text(&types) {
         let text = wl_paste(&["--no-newline", "--type", "text"])?;
-        return Some(WatchEvent::Clip(
-            String::from_utf8_lossy(&text).into_owned(),
-        ));
+        let text = String::from_utf8_lossy(&text).into_owned();
+        if let Some(path) = image_file(&text) {
+            if let Ok(bytes) = std::fs::read(&path) {
+                return Some(WatchEvent::Image(bytes, file_name(&path)));
+            }
+        }
+        return Some(WatchEvent::Clip(text));
     }
     let bytes = wl_paste(&["--type", image_type(&types)?])?;
-    Some(WatchEvent::Image(bytes))
+    Some(WatchEvent::Image(bytes, None))
 }
 
 /// Watch clipboard changes with `wl-paste --watch`, which prints one byte per
@@ -158,5 +199,33 @@ mod tests {
         assert_eq!(image_type(&["image/bmp"]), Some("image/bmp"));
         assert_eq!(image_type(&["text/html"]), None);
         assert!(is_secret(&["x-kde-passwordManagerHint", "text/plain"]));
+    }
+
+    #[test]
+    fn image_file_only_for_a_single_image_file() {
+        let dir = std::env::temp_dir().join(format!("pastel-img-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("a.png");
+        // Smallest valid PNG: one transparent pixel
+        let bytes: &[u8] = &[
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89, 0, 0, 0, 0x0d, 0x49,
+            0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0, 1, 0, 0, 5, 0, 1, 0x0d, 0x0a, 0x2d, 0xb4, 0, 0,
+            0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+        std::fs::write(&png, bytes).unwrap();
+        std::fs::write(dir.join("a.txt"), "hi").unwrap();
+        let uri = |name: &str| gio::File::for_path(dir.join(name)).uri().to_string();
+
+        assert_eq!(image_file(png.to_str().unwrap()), Some(png.clone()));
+        assert_eq!(image_file(&uri("a.png")), Some(png.clone()));
+        assert_eq!(image_file(&uri("a.txt")), None);
+        assert_eq!(
+            image_file(&format!("{}\n{}", uri("a.png"), uri("a.txt"))),
+            None
+        );
+        assert_eq!(image_file("see /tmp/a.png"), None);
+        assert_eq!(image_file("/no/such/file.png"), None);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

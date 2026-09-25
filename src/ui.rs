@@ -2,8 +2,8 @@
 //! preferences, and clipboard capture wiring.
 
 use crate::backend::{
-    has_text, image_type, is_secret, spawn_wayland_watcher, write_clipboard, write_image,
-    WatchEvent,
+    file_name, has_text, image_file, image_type, is_secret, spawn_wayland_watcher, write_clipboard,
+    write_image, WatchEvent,
 };
 use crate::format::{now_ts, preview_text, rel_time};
 use crate::models::{
@@ -142,7 +142,7 @@ impl AppState {
 
     /// Record a copied image. It is stored as a PNG plus a thumbnail, named by
     /// a hash of its pixels so copying the same image again is deduplicated.
-    pub fn ingest_image(&mut self, texture: &gtk4::gdk::Texture) {
+    pub fn ingest_image(&mut self, texture: &gtk4::gdk::Texture, name: Option<String>) {
         use std::hash::{Hash, Hasher};
         let (w, h) = (texture.width(), texture.height());
         let stride = w as usize * 4;
@@ -164,7 +164,7 @@ impl AppState {
             }
         }
         self.add_clip(ClipItem {
-            text: format!("Image · {w}×{h}"),
+            text: format!("{} · {w}×{h}", name.as_deref().unwrap_or("Image")),
             pinned: false,
             ts: 0.0,
             image: Some(id),
@@ -563,7 +563,7 @@ fn build_ui(app: &adw::Application) {
                     if image_type(&types).is_some() {
                         cb.read_texture_async(None::<&gio::Cancellable>, move |res| {
                             let Ok(Some(texture)) = res else { return };
-                            state.borrow_mut().ingest_image(&texture);
+                            state.borrow_mut().ingest_image(&texture, None);
                             state.borrow().save();
                             rebuild();
                         });
@@ -575,7 +575,18 @@ fn build_ui(app: &adw::Application) {
                     if text.as_str() == state.borrow().last_clip {
                         return;
                     }
-                    state.borrow_mut().ingest(text.to_string());
+                    let image = image_file(&text).and_then(|p| {
+                        let texture = gtk4::gdk::Texture::from_filename(&p).ok()?;
+                        Some((texture, file_name(&p)))
+                    });
+                    if let Some((texture, name)) = image {
+                        let mut st = state.borrow_mut();
+                        st.ingest_image(&texture, name);
+                        // Don't reload the file while the same path stays copied
+                        st.last_clip = text.to_string();
+                    } else {
+                        state.borrow_mut().ingest(text.to_string());
+                    }
                     state.borrow().save();
                     rebuild();
                 });
@@ -608,10 +619,10 @@ fn build_ui(app: &adw::Application) {
                         state.borrow_mut().ingest(text);
                         changed = true;
                     }
-                    Ok(WatchEvent::Image(bytes)) => {
+                    Ok(WatchEvent::Image(bytes, name)) => {
                         let bytes = glib::Bytes::from_owned(bytes);
                         if let Ok(texture) = gtk4::gdk::Texture::from_bytes(&bytes) {
-                            state.borrow_mut().ingest_image(&texture);
+                            state.borrow_mut().ingest_image(&texture, name);
                             changed = true;
                         }
                     }

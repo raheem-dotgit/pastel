@@ -106,8 +106,9 @@ settings.
   Pastel records copies made while its window is open, plus your latest copy
   each time you open it with Super+V.
 
-Text and images are both recorded. When a copy offers both (for example a
-file copied in the file manager), Pastel keeps the text.
+Text and images are both recorded. Copying an image file in the Files app
+saves the image itself, named after the file. When a copy offers both text
+and an image, Pastel keeps the text.
 
 ## Build from source
 
