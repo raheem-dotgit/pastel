@@ -21,6 +21,7 @@ GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 ## Features
 
 - **Clipboard history on Super+V**, just like Win+V on Windows
+- **Text and images**: screenshots and copied images are saved with a preview
 - **Instant search**: type to filter, then press Enter to copy
 - **Pin clips** so they're never pushed out of the history
 - **Hide after copy**: pick a clip, then paste with Ctrl+V
@@ -103,7 +104,8 @@ settings.
   Pastel records copies made while its window is open, plus your latest copy
   each time you open it with Super+V.
 
-Pastel stores text only; images are not recorded.
+Text and images are both recorded. When a copy offers both (for example a
+file copied in the file manager), Pastel keeps the text.
 
 ## Build from source
 
@@ -121,6 +123,7 @@ cargo build --release
 |---|---|
 | `~/.config/pastel/history.json` | Clipboard history |
 | `~/.config/pastel/settings.json` | Preferences |
+| `~/.config/pastel/images/` | Saved images and thumbnails |
 
 ## Uninstall
 
@@ -153,7 +156,8 @@ Locally, in `~/.config/pastel/history.json`, readable only by your user.
 Your history never leaves your computer.
 
 **Does it save images?**
-No, Pastel records text only.
+Yes. Copied images and screenshots are saved with a thumbnail, and you can
+copy them back like any other clip.
 
 **Is it free?**
 Yes. Pastel is free and open source under the MIT license.
