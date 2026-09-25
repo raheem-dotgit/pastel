@@ -7,14 +7,15 @@
 
 **Pastel** is a fast, lightweight clipboard manager for Linux that works like
 **Windows clipboard history (Win+V)**. Press **Super+V** to see everything
-you've copied, search it, pin favorites, and paste again. It's a native
+you've copied (text, images and screenshots), search it, pin favorites, and
+paste again. It's a native
 GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 **Wayland**.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-    <img src="docs/screenshot-light.png" width="430" alt="Pastel clipboard manager window showing searchable clipboard history with pinned clips on Ubuntu GNOME">
+    <img src="docs/screenshot-light.png" width="430" alt="Pastel clipboard manager window showing searchable text and image clipboard history with pinned clips on Ubuntu GNOME">
   </picture>
 </p>
 
@@ -39,6 +40,7 @@ GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 | Interface | GTK4 + libadwaita | Qt | GTK 4 app + GNOME Shell extension | none; uses a picker such as wofi |
 | Default shortcut to open history | Super+V | configurable | Ctrl+Alt+H | bind it yourself |
 | Desktops | GNOME, wlroots (Sway, Hyprland) | Linux, Windows, macOS¹ | GNOME | wlroots (Sway etc.) |
+| Saves images | ✅ | ✅ | ✅ | ❌ |
 | Records copies while hidden on GNOME | ❌ latest copy only² | ✅ via its Shell extension | ✅ | n/a |
 
 ¹ On Wayland, CopyQ monitors the clipboard natively on KDE Plasma and
