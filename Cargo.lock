@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "pastel"
-version = "1.0.3"
+version = "1.1.0"
 dependencies = [
  "gtk4",
  "libadwaita",

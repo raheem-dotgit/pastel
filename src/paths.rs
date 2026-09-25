@@ -20,6 +20,10 @@ pub fn history_path() -> PathBuf {
     config_dir().join("history.json")
 }
 
+pub fn images_dir() -> PathBuf {
+    config_dir().join("images")
+}
+
 pub fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }

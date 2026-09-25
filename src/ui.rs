@@ -1,11 +1,17 @@
 //! GTK4 + libadwaita user interface: history list, search, row menu,
 //! preferences, and clipboard capture wiring.
 
-use crate::backend::{spawn_wayland_watcher, write_clipboard, WatchEvent};
+use crate::backend::{
+    has_text, image_type, is_secret, spawn_wayland_watcher, write_clipboard, write_image,
+    WatchEvent,
+};
 use crate::format::{now_ts, preview_text, rel_time};
-use crate::models::{load_history, save_history, save_settings, ClipItem, CloseAction, Settings};
+use crate::models::{
+    image_path, load_history, prune_images, save_history, save_settings, thumb_path, write_private,
+    ClipItem, CloseAction, Settings,
+};
 use crate::paths::{
-    autostart_path, config_dir, desktop_entry, exe_path, history_path, socket_path,
+    autostart_path, config_dir, desktop_entry, exe_path, history_path, images_dir, socket_path,
 };
 use adw::prelude::*;
 use gtk4::{gio, glib, glib::ControlFlow};
@@ -18,6 +24,7 @@ use std::rc::Rc;
 // State
 
 const MAX_ITEM_BYTES: usize = 200_000;
+const MAX_IMAGE_BYTES: usize = 20_000_000;
 
 pub struct AppState {
     pub items: Vec<ClipItem>, // oldest first, newest at the end
@@ -48,6 +55,7 @@ impl AppState {
         let _ = std::fs::create_dir_all(config_dir());
         save_history(&self.items);
         save_settings(&self.settings);
+        prune_images(&self.items);
     }
 
     pub fn apply_autostart(&self) {
@@ -61,9 +69,9 @@ impl AppState {
         }
     }
 
-    pub fn add_clip(&mut self, text: String) {
+    pub fn add_clip(&mut self, item: ClipItem) {
         let ts = now_ts();
-        if let Some(pos) = self.items.iter().position(|i| i.text == text) {
+        if let Some(pos) = self.items.iter().position(|i| i.key() == item.key()) {
             let pinned = self.items[pos].pinned;
             self.items[pos].ts = ts;
             if !pinned {
@@ -71,11 +79,7 @@ impl AppState {
                 self.items.push(item); // re-copied → newest
             }
         } else {
-            self.items.push(ClipItem {
-                text,
-                pinned: false,
-                ts,
-            });
+            self.items.push(ClipItem { ts, ..item });
         }
         self.trim();
     }
@@ -96,13 +100,17 @@ impl AppState {
 
     /// Copy item `idx` back to the clipboard. Returns true on success.
     pub fn copy(&mut self, idx: usize) -> bool {
-        let Some(text) = self.items.get(idx).map(|i| i.text.clone()) else {
+        let Some(item) = self.items.get(idx) else {
             return false;
         };
-        if !write_clipboard(&text) {
+        let ok = match &item.image {
+            Some(id) => write_image(&image_path(id)),
+            None => write_clipboard(&item.text),
+        };
+        if !ok {
             return false;
         }
-        self.last_clip = text;
+        self.last_clip = item.key().to_string();
         let ts = now_ts();
         if let Some(item) = self.items.get_mut(idx) {
             item.ts = ts;
@@ -124,8 +132,62 @@ impl AppState {
             return;
         }
         self.last_clip = text.clone();
-        self.add_clip(text);
+        self.add_clip(ClipItem {
+            text,
+            pinned: false,
+            ts: 0.0,
+            image: None,
+        });
     }
+
+    /// Record a copied image. It is stored as a PNG plus a thumbnail, named by
+    /// a hash of its pixels so copying the same image again is deduplicated.
+    pub fn ingest_image(&mut self, texture: &gtk4::gdk::Texture) {
+        use std::hash::{Hash, Hasher};
+        let (w, h) = (texture.width(), texture.height());
+        let stride = w as usize * 4;
+        let mut pixels = vec![0u8; stride * h as usize];
+        texture.download(&mut pixels, stride);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (w, h, &pixels).hash(&mut hasher);
+        let id = format!("{:016x}", hasher.finish());
+        drop(pixels);
+        if id == self.last_clip {
+            return;
+        }
+        self.last_clip = id.clone();
+
+        if !self.items.iter().any(|i| i.image.as_deref() == Some(&id)) {
+            let png = texture.save_to_png_bytes();
+            if png.len() > MAX_IMAGE_BYTES || save_image_files(&id, &png).is_none() {
+                return;
+            }
+        }
+        self.add_clip(ClipItem {
+            text: format!("Image · {w}×{h}"),
+            pinned: false,
+            ts: 0.0,
+            image: Some(id),
+        });
+    }
+}
+
+/// Write an image and its list thumbnail (up to 120×56 px) to disk.
+fn save_image_files(id: &str, png: &[u8]) -> Option<()> {
+    std::fs::create_dir_all(images_dir()).ok()?;
+    let stream = gio::MemoryInputStream::from_bytes(&glib::Bytes::from(png));
+    let thumb = gtk4::gdk_pixbuf::Pixbuf::from_stream_at_scale(
+        &stream,
+        120,
+        56,
+        true,
+        None::<&gio::Cancellable>,
+    )
+    .ok()?
+    .save_to_bufferv("png", &[])
+    .ok()?;
+    write_private(&image_path(id), png).ok()?;
+    write_private(&thumb_path(id), &thumb).ok()
 }
 
 /// Copy the first display item; returns whether the window should hide.
@@ -259,6 +321,13 @@ fn build_ui(app: &adw::Application) {
                 hbox.set_margin_start(10);
                 hbox.set_margin_end(10);
 
+                if let Some(id) = &item.image {
+                    let pic = gtk4::Picture::for_filename(thumb_path(id));
+                    pic.set_content_fit(gtk4::ContentFit::Contain);
+                    pic.set_can_shrink(true);
+                    pic.set_halign(gtk4::Align::Start);
+                    hbox.append(&pic);
+                }
                 let label = gtk4::Label::new(Some(&preview_text(&item.text)));
                 label.set_hexpand(true);
                 label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
@@ -484,16 +553,23 @@ fn build_ui(app: &adw::Application) {
             let state = state.clone();
             let rebuild = rebuild.clone();
             Rc::new(move |cb: &gtk4::gdk::Clipboard| {
-                let formats = cb.formats();
-                if formats
-                    .mime_types()
-                    .iter()
-                    .any(|m| m.contains("passwordManagerHint"))
-                {
+                let types = cb.formats().mime_types();
+                if is_secret(&types) {
                     return;
                 }
                 let state = state.clone();
                 let rebuild = rebuild.clone();
+                if !has_text(&types) {
+                    if image_type(&types).is_some() {
+                        cb.read_texture_async(None::<&gio::Cancellable>, move |res| {
+                            let Ok(Some(texture)) = res else { return };
+                            state.borrow_mut().ingest_image(&texture);
+                            state.borrow().save();
+                            rebuild();
+                        });
+                    }
+                    return;
+                }
                 cb.read_text_async(None::<&gio::Cancellable>, move |res| {
                     let Ok(Some(text)) = res else { return };
                     if text.as_str() == state.borrow().last_clip {
@@ -531,6 +607,13 @@ fn build_ui(app: &adw::Application) {
                     Ok(WatchEvent::Clip(text)) => {
                         state.borrow_mut().ingest(text);
                         changed = true;
+                    }
+                    Ok(WatchEvent::Image(bytes)) => {
+                        let bytes = glib::Bytes::from_owned(bytes);
+                        if let Ok(texture) = gtk4::gdk::Texture::from_bytes(&bytes) {
+                            state.borrow_mut().ingest_image(&texture);
+                            changed = true;
+                        }
                     }
                     Ok(WatchEvent::Dead) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         eprintln!("clipboard watcher stopped: `wl-paste --watch` unavailable");

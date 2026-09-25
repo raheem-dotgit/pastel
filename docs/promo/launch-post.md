@@ -17,6 +17,7 @@ Press **Super+V** and you get a searchable list of everything you've copied.
 Pick a clip, press Enter, and paste it with Ctrl+V.
 
 - Native GTK4 + libadwaita UI that follows your light/dark theme
+- Saves text and images (screenshots included), with previews
 - Instant search, pinned clips, and hide-after-copy
 - Skips clips that password managers such as KeePassXC mark as secret
 - History is stored locally, readable only by your user
@@ -31,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/raheem-dotgit/pastel/main/install.s
 To be upfront about one limit: on GNOME, Wayland only lets apps see clipboard
 changes while their window is focused. So Pastel records copies made while
 it's open, plus your latest copy each time you open it. On Sway, Hyprland and
-other wlroots compositors it records every copy. It's text only for now.
+other wlroots compositors it records every copy.
 
 It's free and open source (MIT): https://github.com/raheem-dotgit/pastel
 

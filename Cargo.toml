@@ -1,6 +1,6 @@
 [package]
 name = "pastel"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2021"
 description = "Win+V style clipboard history manager for Linux (GNOME, Ubuntu, Wayland)"
 license = "MIT"
@@ -12,7 +12,7 @@ categories = ["gui"]
 publish = false
 
 [dependencies]
-gtk4 = "0.11.5"
+gtk4 = { version = "0.11.5", features = ["v4_8"] }
 libadwaita = "0.9.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
