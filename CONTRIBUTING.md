@@ -26,6 +26,7 @@ cargo run
 | `src/main.rs` | CLI commands, single-instance check, Super+V setup |
 | `src/ui.rs` | GTK window, list, preferences, clipboard capture |
 | `src/backend.rs` | `wl-paste --watch` watcher and `wl-copy` |
+| `extension/` | GNOME Shell extension that forwards copies to Pastel while hidden |
 | `src/models.rs` | History and settings, saved as JSON |
 | `src/paths.rs` | File locations and the desktop entry |
 | `src/format.rs` | Clip previews and relative times |
