@@ -2,8 +2,8 @@
 //! preferences, and clipboard capture wiring.
 
 use crate::backend::{
-    file_name, has_text, image_file, image_type, is_secret, spawn_wayland_watcher, write_clipboard,
-    write_image, WatchEvent,
+    file_name, has_text, image_file, image_type, is_secret, spawn_wayland_watcher, text_event,
+    write_clipboard, write_image, WatchEvent,
 };
 use crate::format::{now_ts, preview_text, rel_time};
 use crate::models::{
@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::rc::Rc;
+use std::sync::mpsc;
 
 // State
 
@@ -212,6 +213,42 @@ fn copy_display(state: &Rc<RefCell<AppState>>, vi: usize) -> bool {
     let hide = ok && st.settings.hide_after_copy;
     st.save();
     hide
+}
+
+/// A message from another process on the control socket.
+enum Msg {
+    Show,
+    Quit,
+    Event(WatchEvent),
+}
+
+/// `quit`, `clip\n<text>` or `image\n<bytes>`; anything else shows the window.
+fn parse_msg(buf: Vec<u8>) -> Msg {
+    if let Some(text) = buf.strip_prefix(b"clip\n") {
+        Msg::Event(text_event(String::from_utf8_lossy(text).into_owned()))
+    } else if let Some(img) = buf.strip_prefix(b"image\n") {
+        Msg::Event(WatchEvent::Image(img.to_vec(), None))
+    } else if buf.starts_with(b"quit") {
+        Msg::Quit
+    } else {
+        Msg::Show
+    }
+}
+
+/// Record a captured clip; returns whether the history changed.
+fn apply_event(state: &Rc<RefCell<AppState>>, ev: WatchEvent) -> bool {
+    match ev {
+        WatchEvent::Clip(text) => state.borrow_mut().ingest(text),
+        WatchEvent::Image(bytes, name) => {
+            let bytes = glib::Bytes::from_owned(bytes);
+            let Ok(texture) = gtk4::gdk::Texture::from_bytes(&bytes) else {
+                return false;
+            };
+            state.borrow_mut().ingest_image(&texture, name);
+        }
+        WatchEvent::Dead => return false,
+    }
+    true
 }
 
 // Entry point
@@ -615,16 +652,8 @@ fn build_ui(app: &adw::Application) {
             let mut alive = true;
             loop {
                 match rx.try_recv() {
-                    Ok(WatchEvent::Clip(text)) => {
-                        state.borrow_mut().ingest(text);
-                        changed = true;
-                    }
-                    Ok(WatchEvent::Image(bytes, name)) => {
-                        let bytes = glib::Bytes::from_owned(bytes);
-                        if let Ok(texture) = gtk4::gdk::Texture::from_bytes(&bytes) {
-                            state.borrow_mut().ingest_image(&texture, name);
-                            changed = true;
-                        }
+                    Ok(ev @ (WatchEvent::Clip(_) | WatchEvent::Image(..))) => {
+                        changed |= apply_event(&state, ev);
                     }
                     Ok(WatchEvent::Dead) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         eprintln!("clipboard watcher stopped: `wl-paste --watch` unavailable");
@@ -646,34 +675,45 @@ fn build_ui(app: &adw::Application) {
         });
     }
 
-    // Handle `pastel show` / `pastel quit` from other processes
+    // Handle `pastel show` / `pastel quit` and clips sent by the GNOME Shell
+    // extension. Each connection is read on its own thread so a large image
+    // never blocks the UI; the timer applies the parsed messages.
     {
         let listener = listener.clone();
         let window = window.clone();
         let app = app.clone();
-        let state_sock = state.clone();
+        let state = state.clone();
+        let rebuild = rebuild.clone();
+        let (tx, rx) = mpsc::channel::<Msg>();
         glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
             if let Some(listener) = listener.as_ref() {
-                for _ in 0..4 {
-                    let Ok((mut stream, _)) = listener.accept() else {
-                        break;
-                    };
-                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(80)));
-                    let mut msg = String::new();
-                    let mut buf = [0u8; 32];
-                    while let Ok(n) = stream.read(&mut buf) {
-                        if n == 0 || msg.len() > 16 {
-                            break;
-                        }
-                        msg.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    }
-                    if msg.starts_with("quit") {
-                        state_sock.borrow().save();
-                        app.quit();
-                    } else {
-                        window.present();
-                    }
+                while let Ok((stream, _)) = listener.accept() {
+                    let tx = tx.clone();
+                    std::thread::spawn(move || {
+                        let _ = stream.set_nonblocking(false);
+                        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+                        let mut buf = Vec::new();
+                        let _ = stream
+                            .take(MAX_IMAGE_BYTES as u64 + 16)
+                            .read_to_end(&mut buf);
+                        let _ = tx.send(parse_msg(buf));
+                    });
                 }
+            }
+            let mut changed = false;
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    Msg::Quit => {
+                        state.borrow().save();
+                        app.quit();
+                    }
+                    Msg::Show => window.present(),
+                    Msg::Event(ev) => changed |= apply_event(&state, ev),
+                }
+            }
+            if changed {
+                state.borrow().save();
+                rebuild();
             }
             ControlFlow::Continue
         });
@@ -827,4 +867,23 @@ fn show_preferences(window: &adw::ApplicationWindow, state: &Rc<RefCell<AppState
 
     prefs.add(&page);
     prefs.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_control_messages() {
+        assert!(matches!(parse_msg(b"quit".to_vec()), Msg::Quit));
+        assert!(matches!(parse_msg(b"show".to_vec()), Msg::Show));
+        assert!(matches!(
+            parse_msg(b"clip\nhi".to_vec()),
+            Msg::Event(WatchEvent::Clip(t)) if t == "hi"
+        ));
+        assert!(matches!(
+            parse_msg(b"image\n\x89PNG".to_vec()),
+            Msg::Event(WatchEvent::Image(b, None)) if b == b"\x89PNG"
+        ));
+    }
 }
