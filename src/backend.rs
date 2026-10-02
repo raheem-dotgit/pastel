@@ -80,6 +80,16 @@ pub fn file_name(path: &Path) -> Option<String> {
     Some(path.file_name()?.to_string_lossy().into_owned())
 }
 
+/// Copied text becomes an image event when it is a path to an image file.
+pub fn text_event(text: String) -> WatchEvent {
+    if let Some(path) = image_file(&text) {
+        if let Ok(bytes) = std::fs::read(&path) {
+            return WatchEvent::Image(bytes, file_name(&path));
+        }
+    }
+    WatchEvent::Clip(text)
+}
+
 fn wl_paste(args: &[&str]) -> Option<Vec<u8>> {
     let out = Command::new("wl-paste").args(args).output().ok()?;
     out.status.success().then_some(out.stdout)
@@ -94,13 +104,7 @@ fn read_current() -> Option<WatchEvent> {
     }
     if has_text(&types) {
         let text = wl_paste(&["--no-newline", "--type", "text"])?;
-        let text = String::from_utf8_lossy(&text).into_owned();
-        if let Some(path) = image_file(&text) {
-            if let Ok(bytes) = std::fs::read(&path) {
-                return Some(WatchEvent::Image(bytes, file_name(&path)));
-            }
-        }
-        return Some(WatchEvent::Clip(text));
+        return Some(text_event(String::from_utf8_lossy(&text).into_owned()));
     }
     let bytes = wl_paste(&["--type", image_type(&types)?])?;
     Some(WatchEvent::Image(bytes, None))

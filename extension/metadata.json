@@ -1,0 +1,7 @@
+{
+  "uuid": "pastel@raheem-dotgit.github.io",
+  "name": "Pastel clipboard bridge",
+  "description": "Sends clipboard changes to Pastel so it records copies while its window is hidden.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/raheem-dotgit/pastel"
+}

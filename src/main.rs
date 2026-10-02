@@ -16,6 +16,9 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 const INSTALL_URL: &str = "https://raw.githubusercontent.com/raheem-dotgit/pastel/main/install.sh";
+const EXTENSION_UUID: &str = "pastel@raheem-dotgit.github.io";
+const EXTENSION_META: &str = include_str!("../extension/metadata.json");
+const EXTENSION_JS: &str = include_str!("../extension/extension.js");
 const MEDIA_KEYS: &str = "org.gnome.settings-daemon.plugins.media-keys";
 const SHORTCUT_PATH: &str =
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/pastel/";
@@ -103,6 +106,40 @@ fn bind_super_v() -> Option<()> {
     Some(())
 }
 
+/// Install and enable the GNOME Shell extension that records copies while
+/// the window is hidden. A new extension is only picked up after logging out
+/// and back in on Wayland.
+fn install_extension() {
+    let Some(base) = applications_path()
+        .ancestors()
+        .nth(2)
+        .map(|p| p.join("gnome-shell/extensions"))
+    else {
+        return;
+    };
+    let dir = base.join(EXTENSION_UUID);
+    let ok = std::fs::create_dir_all(&dir).is_ok()
+        && std::fs::write(dir.join("metadata.json"), EXTENSION_META).is_ok()
+        && std::fs::write(dir.join("extension.js"), EXTENSION_JS).is_ok();
+    if !ok {
+        eprintln!("Failed to install the GNOME Shell extension.");
+        return;
+    }
+    // Fails until the Shell has seen the new files; then it is enabled on next login.
+    let enabled = Command::new("gnome-extensions")
+        .args(["enable", EXTENSION_UUID])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    println!(
+        "Installed the GNOME Shell extension. {}",
+        if enabled {
+            "Log out and back in if background capture does not start."
+        } else {
+            "Log out and back in to start background capture, then run: gnome-extensions enable pastel@raheem-dotgit.github.io"
+        }
+    );
+}
+
 /// Add Pastel to the app menu and bind Super+V.
 fn cmd_install() {
     let path = applications_path();
@@ -113,6 +150,7 @@ fn cmd_install() {
         Ok(_) => println!("Added to the app menu: {}", path.display()),
         Err(e) => eprintln!("Failed to add the app menu entry: {e}"),
     }
+    install_extension();
     match bind_super_v() {
         Some(()) => println!("Bound Super+V to open Pastel."),
         None => println!(

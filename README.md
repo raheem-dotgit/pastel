@@ -41,12 +41,11 @@ GTK4 + libadwaita app written in Rust, built for **Ubuntu**, **GNOME** and
 | Default shortcut to open history | Super+V | configurable | Ctrl+Alt+H | bind it yourself |
 | Desktops | GNOME, wlroots (Sway, Hyprland) | Linux, Windows, macOS¹ | GNOME | wlroots (Sway etc.) |
 | Saves images | ✅ | ✅ | ✅ | ❌ |
-| Records copies while hidden on GNOME | ❌ latest copy only² | ✅ via its Shell extension | ✅ | n/a |
+| Records copies while hidden on GNOME | ✅ via its Shell extension | ✅ via its Shell extension | ✅ | n/a |
 
 ¹ On Wayland, CopyQ monitors the clipboard natively on KDE Plasma and
 wlroots, and through a bundled GNOME Shell extension on GNOME
 ([known issues](https://copyq.readthedocs.io/en/latest/known-issues.html)).
-² See [How clipboard capture works](#how-clipboard-capture-works).
 
 ## Install
 
@@ -102,9 +101,12 @@ settings.
 
 - **Sway, Hyprland and other wlroots compositors:** every copy is recorded,
   even while Pastel is hidden (via `wl-paste --watch`).
-- **GNOME:** Wayland only reports clipboard changes to the focused window.
-  Pastel records copies made while its window is open, plus your latest copy
-  each time you open it with Super+V.
+- **GNOME:** Wayland only reports clipboard changes to the focused window, so
+  `pastel install` also adds a small GNOME Shell extension that forwards every
+  copy to Pastel, even while its window is hidden. Log out and back in once
+  after installing so GNOME loads it. Without the extension, Pastel records
+  only copies made while its window is open, plus your latest copy each time
+  you open it with Super+V.
 
 Text and images are both recorded. Copying an image file in the Files app
 saves the image itself, named after the file. When a copy offers both text
@@ -147,8 +149,9 @@ searchable list of what you've copied, like Win+V on Windows.
 
 **Does it work on Wayland?**
 Yes. On Sway, Hyprland and other wlroots compositors every copy is recorded.
-On GNOME, Wayland only lets Pastel see copies while its window is open, plus
-your latest copy each time you open it.
+On GNOME, Wayland only lets apps see copies while their window is focused, so
+Pastel installs a small Shell extension (log out and back in once) that
+forwards every copy to it.
 
 **Is there a clipboard manager for GNOME that looks native?**
 Pastel is built with GTK4 and libadwaita, so it looks like other GNOME apps
